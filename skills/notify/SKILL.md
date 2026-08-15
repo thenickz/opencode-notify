@@ -29,7 +29,9 @@ git clone https://github.com/thenickz/opencode-notify.git ~/.opencode-notify
 ```
 
 This symlinks the plugin into `~/.config/opencode/plugins/`, the dispatcher into
-`~/.config/opencode/notify.sh`, and the skill into the tools' skill paths.
+`~/.config/opencode/notify.sh`, the skill into the tools' skill paths, and
+creates a commented config template at
+`~/.config/opencode/opencode-notify.env` (only if the file does not exist).
 **Restart opencode** afterwards — plugins load at startup.
 
 ## 2. Check current state
@@ -63,12 +65,19 @@ If the plugin/script symlinks are missing, re-run `~/.opencode-notify/install.sh
    ```
 
    No message in the chat? Fix token/chat id before continuing.
-5. **Persist the env vars** (add to `~/.bashrc`, then `source ~/.bashrc`):
+5. **Persist the config** (recommended: the plugin's env file — survives stale
+   shells, no `source` needed):
 
    ```bash
-   export OPENCODE_TELEGRAM_BOT_TOKEN="<BOT_TOKEN>"
-   export OPENCODE_TELEGRAM_CHAT_ID="<CHAT_ID>"
+   tee -a ~/.config/opencode/opencode-notify.env >/dev/null <<'EOF'
+   OPENCODE_TELEGRAM_BOT_TOKEN="<BOT_TOKEN>"
+   OPENCODE_TELEGRAM_CHAT_ID="<CHAT_ID>"
+   EOF
+   chmod 600 ~/.config/opencode/opencode-notify.env
    ```
+
+   (Alternative, legacy: add the two `export ...` lines to `~/.bashrc` and
+   `source ~/.bashrc`.)
 
    Never commit the token; never store it in `memory.md` or `AGENTS.md`.
 6. **Restart opencode** so the plugin picks up the new environment.
@@ -96,8 +105,20 @@ PowerShell + **BurntToast** (it fails loudly when a toast cannot be created), th
 
 ## 5. Configuration
 
-All options are env vars; every event toggle defaults to on. The variables live in
-`~/.bashrc` (added during Telegram setup) — see the request→change map below.
+Config comes from two sources, merged at plugin load — the **config file wins**
+over the environment:
+
+- **Config file (canonical):** `~/.config/opencode/opencode-notify.env` — one
+  `KEY=value` per line, `#` comments, optional `export ` prefix and surrounding
+  single/double quotes allowed; no inline comments. `install.sh` creates a
+  commented template if the file is missing. Because the plugin reads the file
+  directly, edits apply even when opencode was launched from a shell whose
+  environment predates the change — no `source ~/.bashrc` or new terminal
+  needed. Keep it private (`chmod 600`; it may hold the Telegram token).
+- **Environment variables:** any `OPENCODE_*` var in the shell (e.g. from
+  `~/.bashrc`) — used as a fallback for keys not present in the file.
+
+Every event toggle defaults to on — see the request→change map below.
 
 | Var | Meaning |
 |---|---|
@@ -114,9 +135,17 @@ All options are env vars; every event toggle defaults to on. The variables live 
 When the user asks to turn notifications on/off, enable or disable a channel, or
 change an event, apply the request with this procedure:
 
-1. Find the current values: `grep -n OPENCODE ~/.bashrc`
-2. Edit the matching line(s) in `~/.bashrc` (or append new `export ...` lines).
-3. Tell the user to **restart opencode** so the plugin picks up the new env.
+1. Find the current values: `grep -n OPENCODE ~/.config/opencode/opencode-notify.env`
+   (if the file is missing, create it: re-run `install.sh` or copy the template
+   from the repo).
+2. Edit/add the matching `OPENCODE_*` line(s) in that file. A key present in the
+   file overrides the environment — remove the line to fall back to the env.
+3. Tell the user to **restart opencode** so the plugin re-reads the file (no
+   `source` needed).
+
+> If the user has an existing `~/.bashrc` setup (no env file yet), you may keep
+> editing `~/.bashrc` — but prefer creating the env file so future edits do not
+> depend on the launching shell. (See issue #1: stale parent shell.)
 
 Request → change map (defaults = all events on, both channels):
 
@@ -134,8 +163,9 @@ Request → change map (defaults = all events on, both channels):
 | "turn that event back on" | delete the `=0` (or set to `1`) |
 | "send to another chat / user" | change `OPENCODE_TELEGRAM_CHAT_ID` |
 
-Note: the plugin snapshots env at startup, so a running opencode ignores edits until
-it restarts — always end with the restart reminder.
+Note: the plugin reads the config file (and snapshots env) at startup, so a
+running opencode ignores edits until it restarts — always end with the restart
+reminder.
 
 ## 6. Testing all three notifications
 
@@ -164,19 +194,21 @@ Notes:
 Diagnose in this order. Stop at the first section that explains the symptom.
 
 1. **Nothing arrives at all** — check in order:
-   - `env | grep OPENCODE_NOTIFY_DISABLED` → must not be `1`.
+   - `grep OPENCODE_NOTIFY_DISABLED ~/.config/opencode/opencode-notify.env` and
+     `env | grep OPENCODE_NOTIFY_DISABLED` → neither must be `1`.
    - `ls -l ~/.config/opencode/plugins/opencode-notify.js` → must exist
      (re-run `~/.opencode-notify/install.sh` if missing).
-   - Is opencode running in a shell that has the env vars? The plugin snapshots
-     env at startup — a terminal that predates an `export` change won't see it.
+   - The plugin reads config (file, then env) at startup — a terminal that
+     predates an export change won't see it, but the env file works regardless.
      **Restart opencode** after any config edit.
 2. **Telegram silent** — one of:
    - `/start` was never sent to the bot (mandatory first step).
    - Token and chat id swapped or mistyped.
-   - The opencode process never received the env vars (export in the same shell
-     that starts opencode, or add to `~/.bashrc`).
+   - The opencode process never received the env vars (add them to
+     `~/.config/opencode/opencode-notify.env`, or export in the same shell that
+     starts opencode / add to `~/.bashrc`).
    - Verify the channel independently: run the curl smoke test from section 3.
-     If curl works but opencode doesn't, it's an env problem (previous bullet).
+     If curl works but opencode doesn't, it's a config problem (previous bullet).
 3. **OS silent** — run the dispatcher by hand to isolate the plugin:
    `OPENCODE_NOTIFY_DEBUG=1 ~/.config/opencode/notify.sh "opencode" "test" done`
    - WSL: install BurntToast (section 4). `wsl-notify-send.exe` may exit 0

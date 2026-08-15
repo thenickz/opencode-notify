@@ -22,19 +22,28 @@ dispatcher, and a portable Agent Skills `notify` skill.
 ## Conventions
 - Plugin env vars: `OPENCODE_NOTIFY_*` (OS/channel) and `OPENCODE_TELEGRAM_*`
   (Telegram). Every event toggle defaults to ON; `=0` disables.
+- Config resolution at plugin load: `~/.config/opencode/opencode-notify.env`
+  (canonical, wins) over `process.env` (shell/`~/.bashrc` fallback). The file
+  is read directly, so edits apply even from a stale parent shell; a restart is
+  still required. Missing/empty file ⇒ current (env-only) behavior.
+- Config file format: one `KEY=value` per line, `#` comments, optional `export `
+  prefix and surrounding quotes; no inline comments. `install.sh` creates a
+  commented template if missing and keeps it `chmod 600`.
 - Keep `README.md`, `skills/notify/SKILL.md`, and this file in sync when behavior
   or config changes.
 - The plugin resolves `notify.sh` from `$HOME/.config/opencode/notify.sh` first,
   then `../scripts/notify.sh` relative to the plugin's realpath — keep that fallback.
-- Never store tokens in docs or logs; env vars only.
+- Never store tokens in docs or logs; keep them in env vars or the private
+  `opencode-notify.env` (chmod 600) only.
 
 ## Structure
 ```
-plugins/opencode-notify.js   opencode plugin (events → notify)
+plugins/opencode-notify.js   opencode plugin (events → notify, env-file config)
 scripts/notify.sh            OS dispatcher (auto-detect platform)
+scripts/notify-env-test.mjs  unit tests for the plugin's config-file parser
 skills/notify/SKILL.md       portable skill (setup + config + self-diagnosis)
 install.sh                   symlink installer (non-destructive, --dry-run/--unlink)
-scripts/validate.sh          syntax + frontmatter checks
+scripts/validate.sh          syntax + parser + frontmatter checks
 ```
 
 ## Boundaries
