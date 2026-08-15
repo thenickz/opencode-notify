@@ -8,11 +8,37 @@ SKILL_SRC="$REPO_DIR/skills/notify"
 
 OPENCODE_PLUGIN_DIR="$HOME/.config/opencode/plugins"
 NOTIFY_DEST="$HOME/.config/opencode/notify.sh"
+ENV_DEST="$HOME/.config/opencode/opencode-notify.env"
 SKILL_DEST_DIRS=(
   "$HOME/.claude/skills"
   "$HOME/.agents/skills"
   "$HOME/.config/opencode/skills"
 )
+
+read -r -d '' ENV_TEMPLATE <<'EOF' || true
+# opencode-notify configuration
+# The plugin reads this file at startup. Values here take precedence over the
+# environment, so changes apply even when opencode was launched from a shell
+# whose environment predates the edit (stale parent shell problem).
+#
+# Format: one KEY=value per line. Lines starting with '#' are ignored. An
+# optional 'export ' prefix and surrounding single/double quotes are allowed.
+# No inline comments. Missing lines fall back to environment variables.
+#
+# Keep this file private (chmod 600): it may hold your Telegram bot token.
+#
+# OPENCODE_NOTIFY_DISABLED=0
+# OPENCODE_NOTIFY_OS=auto
+# OPENCODE_NOTIFY_ON_DONE=1
+# OPENCODE_NOTIFY_ON_PERMISSION=1
+# OPENCODE_NOTIFY_ON_QUESTION=1
+# OPENCODE_NOTIFY_DEBUG=0
+# OPENCODE_TELEGRAM_BOT_TOKEN=
+# OPENCODE_TELEGRAM_CHAT_ID=
+# OPENCODE_TELEGRAM_ON_DONE=1
+# OPENCODE_TELEGRAM_ON_PERMISSION=1
+# OPENCODE_TELEGRAM_ON_QUESTION=1
+EOF
 
 DRY=false
 UNLINK=false
@@ -27,13 +53,14 @@ Usage: ./install.sh [--dry-run] [--unlink]
 Paths (created if missing):
   ~/.config/opencode/plugins/opencode-notify.js   the opencode plugin
   ~/.config/opencode/notify.sh                    OS notification dispatcher
+  ~/.config/opencode/opencode-notify.env          config template (commented)
   ~/.claude/skills/notify                         skill (Claude Code + opencode)
   ~/.agents/skills/notify                         skill (Codex + opencode)
   ~/.config/opencode/skills/notify                skill (opencode native path)
 
 Options:
   --dry-run  show what it would do without changing anything
-  --unlink   remove the created symlinks (does not touch the repo)
+  --unlink   remove the created symlinks (does not touch the repo or the env file)
 
 Non-destructive: never overwrites an existing dir/file that is not a symlink
 to this repo; in those cases it skips with a warning.
@@ -104,6 +131,19 @@ if [[ -f "$NOTIFY_SRC" ]]; then
   link_one "$NOTIFY_SRC" "$NOTIFY_DEST"
 else
   echo "skip notify.sh (missing $NOTIFY_SRC)"
+fi
+
+echo "## Config file"
+if [[ "$UNLINK" == true ]]; then
+  echo "  keep $ENV_DEST (user config, not a symlink)"
+elif [[ -f "$ENV_DEST" ]]; then
+  echo "  ok $ENV_DEST (exists)"
+else
+  echo "  create $ENV_DEST"
+  if [[ "$DRY" == false ]]; then
+    printf '%s\n' "$ENV_TEMPLATE" > "$ENV_DEST"
+    chmod 600 "$ENV_DEST"
+  fi
 fi
 
 echo "## Skill"

@@ -47,12 +47,16 @@ work out of the box. Telegram requires a one-time setup (2 minutes):
 1. Create a bot with [@BotFather](https://t.me/botfather) and copy the token.
 2. Open the bot and press Start (`/start`).
 3. Get your chat id: `https://api.telegram.org/bot<BOT_TOKEN>/getUpdates`
-4. Add to `~/.bashrc`, then restart opencode:
+4. Add to `~/.config/opencode/opencode-notify.env` (created by `install.sh`),
+   then restart opencode:
 
    ```bash
-   export OPENCODE_TELEGRAM_BOT_TOKEN="<BOT_TOKEN>"
-   export OPENCODE_TELEGRAM_CHAT_ID="<CHAT_ID>"
+   echo 'OPENCODE_TELEGRAM_BOT_TOKEN="<BOT_TOKEN>"' >> ~/.config/opencode/opencode-notify.env
+   echo 'OPENCODE_TELEGRAM_CHAT_ID="<CHAT_ID>"' >> ~/.config/opencode/opencode-notify.env
+   chmod 600 ~/.config/opencode/opencode-notify.env
    ```
+
+   (Alternatively, export both in `~/.bashrc`.)
 
 Full guided walkthrough (including WSL) is in the bundled skill: `skills/notify/SKILL.md`.
 
@@ -106,8 +110,20 @@ opencode events
 
 ## Configuration
 
-All options are **env vars**; every event toggle defaults to on. Set them in
-`~/.bashrc` (so every shell has them) and restart opencode.
+Config comes from two sources, merged at plugin load — the **config file wins**
+over the environment:
+
+- **Config file (canonical):** `~/.config/opencode/opencode-notify.env` — one
+  `KEY=value` per line, `#` comments, optional `export ` prefix and surrounding
+  quotes allowed. `install.sh` creates a commented template if the file is
+  missing. The plugin reads the file directly, so edits apply even when opencode
+  was launched from a shell whose environment predates the change (stale parent
+  shell — see [issue #1](https://github.com/thenickz/opencode-notify/issues/1)).
+  Keep it private: `chmod 600` (it may hold the Telegram token).
+- **Environment variables:** any `OPENCODE_*` var in the shell (e.g. from
+  `~/.bashrc`) — fallback for keys not present in the file.
+
+Every event toggle defaults to on:
 
 | Var | Meaning |
 |---|---|
@@ -143,9 +159,11 @@ platform dispatcher.
 
 Quick self-check when nothing arrives:
 
-1. `env | grep OPENCODE_NOTIFY_DISABLED` → must not be `1`.
+1. `grep OPENCODE_NOTIFY_DISABLED ~/.config/opencode/opencode-notify.env` and
+   `env | grep OPENCODE_NOTIFY_DISABLED` → neither must be `1`.
 2. `ls -l ~/.config/opencode/plugins/opencode-notify.js` → must exist (re-run `install.sh`).
-3. Restart opencode after any env change — the plugin snapshots env at startup.
+3. Restart opencode after any config change — the plugin reads config at startup.
+   The env file survives stale shells; `~/.bashrc` edits need a fresh shell.
 4. `OPENCODE_NOTIFY_DEBUG=1` and watch `/tmp/opencode/notify-debug.log`.
 
 The full decision tree is in the skill (`skills/notify/SKILL.md` section 7), and

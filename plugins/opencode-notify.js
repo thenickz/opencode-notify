@@ -11,8 +11,15 @@
 //   - Telegram via the Bot API sendMessage (optional, only if a bot token and
 //     chat id are configured).
 //
-// No external dependencies: uses only process.env, Bun's fetch, Bun's $, and
-// the SDK client provided in the plugin context.
+// No external dependencies: uses only node:fs, process.env, Bun's fetch, Bun's
+// $, and the SDK client provided in the plugin context.
+//
+// Config resolution (at plugin load, per process):
+//   1. ~/.config/opencode/opencode-notify.env   canonical config file (wins)
+//   2. process.env                              shell env (e.g. ~/.bashrc)
+// The file is read directly by the plugin, so edits apply even when opencode
+// was launched from a shell whose environment predates the change (the stale
+// parent shell problem). A missing/empty file means "use the environment".
 //
 // Env vars (all optional; every toggle defaults to on):
 //   OPENCODE_NOTIFY_DISABLED=1             master switch
@@ -27,14 +34,49 @@
 //   OPENCODE_TELEGRAM_ON_PERMISSION=0
 //   OPENCODE_TELEGRAM_ON_QUESTION=0
 
-import { realpathSync, appendFileSync, mkdirSync } from "node:fs"
+import { realpathSync, appendFileSync, mkdirSync, existsSync, readFileSync } from "node:fs"
+
+// Parse a shell-style KEY=value config file into a plain object.
+// Format: one KEY=value per line; '#' starts a comment; an optional 'export '
+// prefix and surrounding single/double quotes are allowed; no inline comments.
+// Missing/unreadable files yield an empty object.
+export const parseNotifyEnv = (filePath) => {
+  const out = {}
+  let text
+  try {
+    if (!filePath || !existsSync(filePath)) return out
+    text = readFileSync(filePath, "utf8")
+  } catch {
+    return out
+  }
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith("#")) continue
+    const m = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
+    if (!m) continue
+    let value = m[2].trim()
+    if (
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1)
+    }
+    out[m[1]] = value
+  }
+  return out
+}
 
 export const OpenCodeNotify = async ({ client, $, directory }) => {
   const env = (key, fallback) => {
-    const value = process.env[key]
+    const value = fileEnv[key] ?? process.env[key]
     return value === undefined || value === "" ? fallback : value
   }
   const enabled = (key) => env(key, "1") !== "0"
+
+  const home = process.env.HOME ?? ""
+  const configFile = home ? `${home}/.config/opencode/opencode-notify.env` : ""
+  const fileEnv = parseNotifyEnv(configFile)
 
   const osChannel = env("OPENCODE_NOTIFY_OS", "auto")
   const tgToken = env("OPENCODE_TELEGRAM_BOT_TOKEN", "")
@@ -52,7 +94,6 @@ export const OpenCodeNotify = async ({ client, $, directory }) => {
   // Resolve the notify.sh dispatcher.
   let notifyScript = env("OPENCODE_NOTIFY_SCRIPT", "")
   if (!notifyScript) {
-    const home = env("HOME", "")
     const candidates = []
     if (home) candidates.push(`${home}/.config/opencode/notify.sh`)
     try {
@@ -84,7 +125,7 @@ export const OpenCodeNotify = async ({ client, $, directory }) => {
   }
 
   debugLine(
-    `loaded debug=${debug} tg=${tgEnabled} masterDisabled=${masterDisabled} os=${osChannel} script=${notifyScript} envToken=${tgToken ? "set" : "unset"} envChat=${tgChatID ? "set" : "unset"}`,
+    `loaded configFile=${configFile || "(none)"} fileKeys=${Object.keys(fileEnv).length} debug=${debug} tg=${tgEnabled} masterDisabled=${masterDisabled} os=${osChannel} script=${notifyScript} envToken=${tgToken ? "set" : "unset"} envChat=${tgChatID ? "set" : "unset"}`,
   )
 
   const projectName = (() => {

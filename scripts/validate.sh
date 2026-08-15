@@ -15,8 +15,9 @@ check() {
   fi
 }
 
-echo "## Plugin (node syntax)"
+echo "## Plugin (node syntax + config parser)"
 check "plugins/opencode-notify.js" "node --check '$REPO_DIR/plugins/opencode-notify.js'"
+check "config parser (scripts/notify-env-test.mjs)" "node '$REPO_DIR/scripts/notify-env-test.mjs'"
 
 echo "## Dispatcher (bash syntax)"
 check "scripts/notify.sh" "bash -n '$REPO_DIR/scripts/notify.sh'"
